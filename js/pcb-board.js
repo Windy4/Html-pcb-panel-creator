@@ -162,11 +162,41 @@ class PCBBoard {
   }
 
   // ── Trace management ───────────────────────────────────────
+  /**
+   * Route a multi-step path between two holes that share the same row OR column.
+   * Automatically inserts a trace segment between every consecutive pair of holes
+   * along the straight line. Returns the array of created traces, or null if the
+   * holes are not H/V aligned.
+   */
+  addTracePath(fromId, toId, layer, netName) {
+    const h1 = this.holes.get(fromId);
+    const h2 = this.holes.get(toId);
+    if (!h1 || !h2 || fromId === toId) return null;
+
+    const sameRow = h1.row === h2.row;
+    const sameCol = h1.col === h2.col;
+    if (!sameRow && !sameCol) return null; // must be strictly H or V
+
+    const created = [];
+    let curId = fromId;
+    const dc = sameRow ? Math.sign(h2.col - h1.col) : 0;
+    const dr = sameCol ? Math.sign(h2.row - h1.row) : 0;
+
+    while (curId !== toId) {
+      const cur = this.holes.get(curId);
+      const nextId = this.holeId(cur.col + dc, cur.row + dr);
+      const t = this.addTrace(curId, nextId, layer, netName);
+      if (t) created.push(t);
+      curId = nextId;
+    }
+    return created;
+  }
+
   addTrace(fromId, toId, layer, netName) {
     const h1 = this.holes.get(fromId);
     const h2 = this.holes.get(toId);
     if (!h1 || !h2) return null;
-    if (!this.isAdjacent(h1, h2)) return null; // enforce H/V adjacency
+    if (!this.isAdjacent(h1, h2)) return null; // single-step adjacency guard
     if (fromId === toId) return null;
 
     // Check for duplicate

@@ -264,9 +264,9 @@ class PCBApp {
           // Complete trace
           if (r2d._routeFrom !== hole.id) {
             const netName = this._pickRouteNet(r2d._routeFrom, hole.id);
-            const trace = this.board.addTrace(r2d._routeFrom, hole.id, this.activeLayer, netName);
-            if (!trace) {
-              this._flashStatus('Holes must be directly adjacent (H or V)');
+            const traces = this.board.addTracePath(r2d._routeFrom, hole.id, this.activeLayer, netName);
+            if (!traces) {
+              this._flashStatus('Route must be horizontal or vertical');
             }
           }
           r2d._routeFrom = null;

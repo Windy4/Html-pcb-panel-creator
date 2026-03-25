@@ -321,18 +321,58 @@ class PCBRenderer2D {
     const h1 = board.getHoleById(this._routeFrom);
     if (!h1) return;
 
+    const g2  = this._mouseGrid;
+    const sameRow = h1.row === g2.row;
+    const sameCol = h1.col === g2.col;
+    const valid   = sameRow || sameCol;
+
+    // Snap preview end-point to the valid H/V axis when off-axis
+    const snapCol = sameRow ? g2.col : (sameCol ? h1.col : g2.col);
+    const snapRow = sameCol ? g2.row : (sameRow ? h1.row : g2.row);
+
     const p1 = this.worldToScreen(h1.col, h1.row);
-    const p2 = this.worldToScreen(this._mouseGrid.col, this._mouseGrid.row);
+    // If diagonal, show two segments: horizontal then vertical (L-shape hint)
+    const pMid = this.worldToScreen(g2.col, h1.row); // corner for L-hint
+    const p2   = this.worldToScreen(snapCol, snapRow);
+    const pEnd = this.worldToScreen(g2.col, g2.row);
 
     ctx.save();
-    ctx.strokeStyle = this.activeLayer === 'top' ? '#ff6666' : '#6699ff';
     ctx.lineWidth = Math.max(2, this.scale * 0.22);
-    ctx.lineCap = 'round';
-    ctx.setLineDash([5, 5]);
-    ctx.beginPath();
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
-    ctx.stroke();
+    ctx.lineCap   = 'round';
+
+    if (valid) {
+      // Solid-ish preview along valid axis
+      ctx.strokeStyle = this.activeLayer === 'top' ? '#ff8888' : '#8888ff';
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+
+      // Dot at destination
+      ctx.setLineDash([]);
+      ctx.fillStyle = this.activeLayer === 'top' ? '#ff8888' : '#8888ff';
+      ctx.beginPath();
+      ctx.arc(p2.x, p2.y, Math.max(3, this.scale * 0.25), 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Diagonal – show L-shape ghost in red to indicate invalid
+      ctx.strokeStyle = 'rgba(255,80,80,0.5)';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(pMid.x, pMid.y);
+      ctx.lineTo(pEnd.x, pEnd.y);
+      ctx.stroke();
+
+      // "Invalid" label near cursor
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255,80,80,0.85)';
+      ctx.font      = `${Math.max(9, this.scale * 0.45)}px monospace`;
+      ctx.textAlign = 'left';
+      ctx.fillText('H/V only', pEnd.x + 6, pEnd.y - 6);
+    }
+
     ctx.restore();
   }
 
