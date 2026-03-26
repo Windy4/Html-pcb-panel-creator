@@ -239,17 +239,48 @@ class PCBBoard {
   }
 
   // ── Module management ──────────────────────────────────────
-  addModule(footprintId, col, row, name) {
+
+  /**
+   * Rotate a single pin (relCol, relRow) clockwise by 0/90/180/270 degrees
+   * using screen-space coordinates (y increases downward).
+   */
+  static _rotateRel(relCol, relRow, degrees) {
+    switch (((degrees % 360) + 360) % 360) {
+      case 90:  return [ relRow, -relCol];
+      case 180: return [-relCol, -relRow];
+      case 270: return [-relRow,  relCol];
+      default:  return [ relCol,  relRow];
+    }
+  }
+
+  /**
+   * Apply rotation to an array of footprint pin descriptors and normalize so
+   * that the top-left pin is always at relCol=0, relRow=0.
+   */
+  _applyRotation(fpPins, degrees) {
+    const rotated = fpPins.map(fpp => {
+      const [rc, rr] = PCBBoard._rotateRel(fpp.relCol, fpp.relRow, degrees);
+      return { ...fpp, relCol: rc, relRow: rr };
+    });
+    const minC = Math.min(...rotated.map(p => p.relCol));
+    const minR = Math.min(...rotated.map(p => p.relRow));
+    return rotated.map(p => ({ ...p, relCol: p.relCol - minC, relRow: p.relRow - minR }));
+  }
+
+  addModule(footprintId, col, row, name, rotation = 0) {
     const fp = this.footprints.get(footprintId);
     if (!fp) return null;
 
-    const modId = this._genId('m');
+    const rot        = ((rotation % 360) + 360) % 360;
+    const rotPins    = this._applyRotation(fp.pins, rot);
+    const modId      = this._genId('m');
     const mod = {
       id:          modId,
       name:        name || `${fp.name} #${this._nextId - 1}`,
       footprintId,
       col, row,
-      pins: fp.pins.map(fpp => ({
+      rotation:    rot,
+      pins: rotPins.map(fpp => ({
         num:    fpp.num,
         name:   fpp.name,
         relCol: fpp.relCol,
@@ -263,6 +294,34 @@ class PCBBoard {
     this.modules.set(modId, mod);
     this._assignModuleHoles(mod, true);
     return mod;
+  }
+
+  /**
+   * Rotate an already-placed module by `steps` × 90° clockwise.
+   * Recalculates all pin positions from the original footprint definition.
+   */
+  rotateModule(modId, steps = 1) {
+    const mod = this.modules.get(modId);
+    if (!mod) return false;
+    const fp = this.footprints.get(mod.footprintId);
+    if (!fp) return false;
+
+    this._assignModuleHoles(mod, false);          // clear old holes
+
+    const newRot   = ((mod.rotation + steps * 90) % 360 + 360) % 360;
+    mod.rotation   = newRot;
+    const rotPins  = this._applyRotation(fp.pins, newRot);
+
+    mod.pins.forEach((pin, idx) => {
+      const rp   = rotPins[idx];
+      pin.relCol = rp.relCol;
+      pin.relRow = rp.relRow;
+      pin.col    = mod.col + rp.relCol;
+      pin.row    = mod.row + rp.relRow;
+    });
+
+    this._assignModuleHoles(mod, true);           // re-assign holes
+    return true;
   }
 
   _assignModuleHoles(mod, set) {

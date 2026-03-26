@@ -131,6 +131,18 @@ class PCBUIManager {
           <span class="prop-label">Position</span>
           <span class="prop-value">(${mod.col}, ${mod.row})</span>
         </div>
+        <div class="prop-row">
+          <span class="prop-label">Rotation</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <button class="rot-btn" data-delta="-1" title="Rotate 90° CCW (counter-clockwise)"
+                    style="background:var(--surface2);border:1px solid var(--border);color:var(--text);
+                           padding:3px 8px;border-radius:4px;cursor:pointer;font-size:14px">↺</button>
+            <span id="mod-rot-val" style="min-width:36px;text-align:center;font-weight:600">${mod.rotation || 0}°</span>
+            <button class="rot-btn" data-delta="1" title="Rotate 90° CW (Tab)″
+                    style="background:var(--surface2);border:1px solid var(--border);color:var(--text);
+                           padding:3px 8px;border-radius:4px;cursor:pointer;font-size:14px">↻</button>
+          </div>
+        </div>
         <div class="prop-actions">
           <button id="mod-del-btn" class="danger">Delete Module</button>
         </div>
@@ -145,6 +157,20 @@ class PCBUIManager {
       board.renameModule(mod.id, e.target.value);
       this.app.renderer2d.draw();
       this.refreshConnectionTable();
+    });
+
+    document.querySelectorAll('.rot-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.app._saveSnapshot();
+        board.rotateModule(mod.id, parseInt(btn.dataset.delta));
+        const updated = board.modules.get(mod.id);
+        if (updated) {
+          document.getElementById('mod-rot-val').textContent = `${updated.rotation}°`;
+          this.app.renderer2d.draw();
+          this.showModuleProps(updated);   // refresh pin positions in props
+          this.refreshConnectionTable();
+        }
+      });
     });
 
     document.getElementById('mod-del-btn')?.addEventListener('click', () => {

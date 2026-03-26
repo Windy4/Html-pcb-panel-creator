@@ -9,9 +9,10 @@ class PCBApp {
     this.ui         = new PCBUIManager(this);
 
     // Tool state
-    this.activeTool  = 'select';
-    this.activeLayer = 'top';
-    this._placingFpId = null;
+    this.activeTool      = 'select';
+    this.activeLayer     = 'top';
+    this._placingFpId    = null;
+    this._placingRotation = 0;   // 0 | 90 | 180 | 270
 
     // Selection
     this._selectedHole  = null;
@@ -167,6 +168,23 @@ class PCBApp {
           this.renderer2d.showGrid = !this.renderer2d.showGrid;
           this.renderer2d.draw();
           break;
+        case 'Tab':
+          e.preventDefault();
+          if (this.activeTool === 'place' && this._placingFpId) {
+            // Rotate place preview 90° CW
+            this._placingRotation = (this._placingRotation + 90) % 360;
+            this._updatePlaceStatus();
+            this.renderer2d.draw();
+          } else if (this._selectedMod) {
+            // Rotate selected module
+            this._saveSnapshot();
+            this.board.rotateModule(this._selectedMod.id, 1);
+            this._selectedMod = this.board.modules.get(this._selectedMod.id);
+            this.ui.showModuleProps(this._selectedMod);
+            this.renderer2d.draw();
+            this.ui.refreshConnectionTable();
+          }
+          break;
       }
     });
   }
@@ -223,7 +241,10 @@ class PCBApp {
     this.activeTool = tool;
     this._updateToolHighlight();
     document.getElementById('sb-tool').textContent = tool;
-    if (tool !== 'place') this._placingFpId = null;
+    if (tool !== 'place') {
+      this._placingFpId     = null;
+      this._placingRotation = 0;
+    }
     if (tool !== 'route') this.renderer2d._routeFrom = null;
     this.renderer2d.draw();
   }
@@ -234,10 +255,17 @@ class PCBApp {
   }
 
   startPlaceMode(fpId) {
-    this._placingFpId = fpId;
+    this._placingFpId     = fpId;
+    this._placingRotation = 0;
     this.setTool('place');
-    const fp = this.board.footprints.get(fpId);
-    document.getElementById('sb-tool').textContent = `place: ${fp ? fp.name : fpId}`;
+    this._updatePlaceStatus();
+  }
+
+  _updatePlaceStatus() {
+    const fp  = this.board.footprints.get(this._placingFpId);
+    const rot = this._placingRotation;
+    document.getElementById('sb-tool').textContent =
+      `place: ${fp ? fp.name : this._placingFpId}  [${rot}°  Tab=rotate]`;
   }
 
   // ── Canvas events ──────────────────────────────────────────
@@ -294,7 +322,7 @@ class PCBApp {
         const col = Math.max(0, Math.min(this.board.cols - 2, g.col));
         const row = Math.max(0, Math.min(this.board.rows - 2, g.row));
         this._saveSnapshot();
-        const mod = this.board.addModule(this._placingFpId, col, row);
+        const mod = this.board.addModule(this._placingFpId, col, row, null, this._placingRotation);
         if (mod) {
           this.onSelectionChange({ type: 'module', target: mod }, true);
           r2d.draw();

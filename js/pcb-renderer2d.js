@@ -124,7 +124,12 @@ class PCBRenderer2D {
     // Route preview
     if (this._routeFrom) this._drawRoutePreview();
 
-    // Drag ghost
+    // Place-mode ghost (follows cursor with correct rotation)
+    if (this.app.activeTool === 'place' && this.app._placingFpId && this._mouseGrid) {
+      this._drawPlaceGhost();
+    }
+
+    // Drag ghost (moving an already-placed module)
     if (this._dragging && this._dragType === 'module') {
       this._drawModuleDragGhost();
     }
@@ -239,6 +244,16 @@ class PCBRenderer2D {
         ctx.font = `${Math.max(8, this.scale * 0.5)}px monospace`;
         ctx.textAlign = 'left';
         ctx.fillText(mod.name, rx + 3, ry - 3);
+      }
+
+      // Rotation badge (shown when not 0°)
+      if (mod.rotation && this.scale > 6) {
+        ctx.fillStyle = '#ffe066';
+        ctx.font = `bold ${Math.max(7, this.scale * 0.38)}px monospace`;
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(`${mod.rotation}°`, rx + rw - 2, ry + rh - 1);
+        ctx.textBaseline = 'alphabetic';
       }
       ctx.restore();
     }
@@ -379,28 +394,51 @@ class PCBRenderer2D {
     ctx.restore();
   }
 
+  /** Ghost for dragging an already-placed module (uses stored rotated relCol/relRow). */
   _drawModuleDragGhost() {
     if (!this._dragTarget || !this._mouseGrid) return;
     const { ctx, board } = this;
     const mod = board.modules.get(this._dragTarget);
     if (!mod) return;
-    const fp  = board.footprints.get(mod.footprintId);
-    if (!fp) return;
 
     const dc = this._mouseGrid.col - this._dragOffset.col;
     const dr = this._mouseGrid.row - this._dragOffset.row;
 
-    ctx.save();
-    ctx.globalAlpha = 0.5;
-    ctx.strokeStyle = '#ffe066';
-    ctx.fillStyle = 'rgba(255,224,102,0.1)';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 4]);
+    // mod.pins already carry rotated relCol/relRow
+    this._drawGhostPins(ctx, mod.pins, dc, dr, '#ffe066', 'rgba(255,224,102,0.1)');
+  }
 
+  /** Ghost for place mode — applies current _placingRotation to footprint pins. */
+  _drawPlaceGhost() {
+    const { ctx, board } = this;
+    const fp = board.footprints.get(this.app._placingFpId);
+    if (!fp || !this._mouseGrid) return;
+
+    const rot     = this.app._placingRotation || 0;
+    const rotPins = board._applyRotation(fp.pins, rot);
+    const dc      = this._mouseGrid.col;
+    const dr      = this._mouseGrid.row;
+
+    this._drawGhostPins(ctx, rotPins, dc, dr, '#53d8fb', 'rgba(83,216,251,0.1)');
+
+    // Show rotation label near ghost
+    if (rot !== 0 && this.scale > 6) {
+      const origin = this.worldToScreen(dc, dr);
+      ctx.save();
+      ctx.fillStyle = '#ffe066';
+      ctx.font = `bold ${Math.max(9, this.scale * 0.4)}px monospace`;
+      ctx.textAlign = 'left';
+      ctx.fillText(`${rot}°`, origin.x + 4, origin.y - 4);
+      ctx.restore();
+    }
+  }
+
+  /** Shared ghost-drawing helper used by both drag and place ghosts. */
+  _drawGhostPins(ctx, pins, dc, dr, stroke, fill) {
     let minC = Infinity, maxC = -Infinity;
     let minR = Infinity, maxR = -Infinity;
-    for (const fpp of fp.pins) {
-      const c = dc + fpp.relCol, r = dr + fpp.relRow;
+    for (const p of pins) {
+      const c = dc + p.relCol, r = dr + p.relRow;
       minC = Math.min(minC, c); maxC = Math.max(maxC, c);
       minR = Math.min(minR, r); maxR = Math.max(maxR, r);
     }
@@ -408,17 +446,24 @@ class PCBRenderer2D {
     const tl  = this.worldToScreen(minC, minR);
     const br  = this.worldToScreen(maxC, maxR);
     const pad = this.scale * 0.6;
-    ctx.strokeRect(tl.x - pad, tl.y - pad,
-                   br.x - tl.x + pad*2, br.y - tl.y + pad*2);
-    ctx.fillRect(tl.x - pad, tl.y - pad,
-                 br.x - tl.x + pad*2, br.y - tl.y + pad*2);
 
-    // Ghost holes
-    for (const fpp of fp.pins) {
-      const p = this.worldToScreen(dc + fpp.relCol, dr + fpp.relRow);
+    ctx.save();
+    ctx.globalAlpha  = 0.55;
+    ctx.strokeStyle  = stroke;
+    ctx.fillStyle    = fill;
+    ctx.lineWidth    = 1.5;
+    ctx.setLineDash([4, 4]);
+
+    ctx.strokeRect(tl.x - pad, tl.y - pad, br.x - tl.x + pad*2, br.y - tl.y + pad*2);
+    ctx.fillRect  (tl.x - pad, tl.y - pad, br.x - tl.x + pad*2, br.y - tl.y + pad*2);
+    ctx.setLineDash([]);
+
+    const pinR = Math.max(2, this.scale * 0.35);
+    for (const p of pins) {
+      const sp = this.worldToScreen(dc + p.relCol, dr + p.relRow);
       ctx.beginPath();
-      ctx.arc(p.x, p.y, Math.max(2, this.scale * 0.35), 0, Math.PI*2);
-      ctx.strokeStyle = '#ffe066';
+      ctx.arc(sp.x, sp.y, pinR, 0, Math.PI * 2);
+      ctx.strokeStyle = stroke;
       ctx.stroke();
     }
     ctx.restore();
