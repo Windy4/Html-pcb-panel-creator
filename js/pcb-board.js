@@ -215,8 +215,9 @@ class PCBBoard {
     };
     this.traces.push(trace);
 
-    // Propagate net to both holes
+    // Propagate net to both holes (also ensures net is registered)
     if (netName) {
+      this.addNet(netName);
       this.assignHoleNet(fromId, netName);
       this.assignHoleNet(toId, netName);
     }
@@ -318,6 +319,7 @@ class PCBBoard {
     if (!mod) return;
     const pin = mod.pins[pinIdx];
     if (!pin) return;
+    if (netName) this.addNet(netName);
     pin.net = netName;
     const h = this.getHole(pin.col, pin.row);
     if (h) h.net = netName;

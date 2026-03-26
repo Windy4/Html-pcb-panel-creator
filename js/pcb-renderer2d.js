@@ -37,6 +37,9 @@ class PCBRenderer2D {
     this._dragStart   = null;
     this._dragOffset  = {x:0, y:0};
 
+    // Erase-drag state
+    this._eraseDragging = false;
+
     // Route state
     this._routeFrom   = null;
 
@@ -544,7 +547,15 @@ class PCBRenderer2D {
     }
 
     if (e.button === 0) {
-      this.app.handleCanvasClick(pos.x, pos.y, e);
+      if (this.app.activeTool === 'erase') {
+        // Save snapshot once for the whole erase gesture, then start drag-erase
+        this.app._saveSnapshot();
+        this._eraseDragging = true;
+        this.canvas.style.cursor = 'cell';
+        this.app.handleEraseAt(pos.x, pos.y);
+      } else {
+        this.app.handleCanvasClick(pos.x, pos.y, e);
+      }
     }
   }
 
@@ -570,7 +581,9 @@ class PCBRenderer2D {
     const mmY = (g.row * board.spacing).toFixed(2);
     document.getElementById('sb-pos').textContent = `(${g.col},${g.row}) ${mmX}×${mmY}mm`;
 
-    if (this._dragging) {
+    if (this._eraseDragging) {
+      this.app.handleEraseAt(pos.x, pos.y);
+    } else if (this._dragging) {
       this.app.handleCanvasDrag(pos.x, pos.y, e);
     }
 
@@ -587,6 +600,13 @@ class PCBRenderer2D {
       return;
     }
 
+    if (this._eraseDragging) {
+      this._eraseDragging = false;
+      this.canvas.style.cursor = 'crosshair';
+      this.app.ui.refreshNetList();
+      return;
+    }
+
     if (this._dragging) {
       const pos = this._clientPos(e);
       this.app.handleCanvasDragEnd(pos.x, pos.y, e);
@@ -597,9 +617,11 @@ class PCBRenderer2D {
   }
 
   _onMouseLeave() {
-    this.isPanning   = false;
-    this._mouseGrid  = null;
+    this.isPanning      = false;
+    this._eraseDragging = false;
+    this._mouseGrid     = null;
     this._hideTooltip();
+    this.canvas.style.cursor = 'crosshair';
     this.draw();
   }
 
@@ -673,6 +695,15 @@ class PCBRenderer2D {
     this.selectedIds.clear();
     this._routeFrom = null;
     this.fitBoard();
+  }
+
+  /** Replace board without changing zoom/pan — used by undo/redo. */
+  updateBoard(board) {
+    this.board          = board;
+    this.selectedIds.clear();
+    this._routeFrom     = null;
+    this._eraseDragging = false;
+    this.draw();
   }
 
   startDrag(type, targetId, mouseX, mouseY) {

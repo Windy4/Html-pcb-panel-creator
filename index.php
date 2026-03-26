@@ -35,6 +35,17 @@
   <div class="tb-sep"></div>
 
   <div class="tb-group">
+    <button class="tb-btn" id="btn-undo" title="Undo (Ctrl+Z)" disabled>
+      <span>↩</span> Undo
+    </button>
+    <button class="tb-btn" id="btn-redo" title="Redo (Ctrl+Y)" disabled>
+      <span>↪</span> Redo
+    </button>
+  </div>
+
+  <div class="tb-sep"></div>
+
+  <div class="tb-group">
     <button class="tb-btn" id="btn-board-cfg" title="Board dimensions & settings">
       <span>⚙</span> Board
     </button>

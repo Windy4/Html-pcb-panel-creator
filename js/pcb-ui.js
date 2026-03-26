@@ -34,7 +34,8 @@ class PCBUIManager {
 
     const netOptions = ['<option value="">— None —</option>',
       ...Array.from(board.nets.keys()).map(n =>
-        `<option value="${n}" ${hole.net === n ? 'selected' : ''}>${this._esc(n)}</option>`)
+        `<option value="${n}" ${hole.net === n ? 'selected' : ''}>${this._esc(n)}</option>`),
+      '<option value="__new__">+ New net…</option>'
     ].join('');
 
     document.getElementById('prop-content').innerHTML = `
@@ -52,6 +53,10 @@ class PCBUIManager {
           <span class="prop-label">Net</span>
           <select class="prop-select" id="hole-net-sel">${netOptions}</select>
         </div>
+        <div class="prop-row" id="hole-new-net-row" style="display:none">
+          <span class="prop-label"></span>
+          <input class="prop-input" id="hole-new-net-inp" placeholder="Net name…" autocomplete="off">
+        </div>
       </div>
       ${mod ? `
       <div class="prop-group">
@@ -67,14 +72,30 @@ class PCBUIManager {
       </div>` : ''}
     `;
 
-    document.getElementById('hole-net-sel')?.addEventListener('change', e => {
-      const netName = e.target.value || null;
+    const applyNet = (netName) => {
+      this.app._saveSnapshot();
       if (netName) board.addNet(netName);
-      board.assignHoleNet(hole.id, netName);
-      if (mod && pin != null) board.setModulePinNet(mod.id, hole.pinIndex, netName);
+      board.assignHoleNet(hole.id, netName || null);
+      if (mod && pin != null) board.setModulePinNet(mod.id, hole.pinIndex, netName || null);
       this.app.renderer2d.draw();
       this.refreshConnectionTable();
       this.refreshNetList();
+    };
+
+    document.getElementById('hole-net-sel')?.addEventListener('change', e => {
+      if (e.target.value === '__new__') {
+        document.getElementById('hole-new-net-row').style.display = 'flex';
+        document.getElementById('hole-new-net-inp')?.focus();
+      } else {
+        document.getElementById('hole-new-net-row').style.display = 'none';
+        applyNet(e.target.value);
+      }
+    });
+    document.getElementById('hole-new-net-inp')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        const name = e.target.value.trim();
+        if (name) applyNet(name);
+      }
     });
   }
 
@@ -84,7 +105,8 @@ class PCBUIManager {
 
     const netOptions = (current) => ['<option value="">— None —</option>',
       ...Array.from(board.nets.keys()).map(n =>
-        `<option value="${n}" ${current === n ? 'selected' : ''}>${this._esc(n)}</option>`)
+        `<option value="${n}" ${current === n ? 'selected' : ''}>${this._esc(n)}</option>`),
+      '<option value="__new__">+ New net…</option>'
     ].join('');
 
     const pinRows = mod.pins.map((pin, idx) => `
@@ -126,6 +148,7 @@ class PCBUIManager {
     });
 
     document.getElementById('mod-del-btn')?.addEventListener('click', () => {
+      this.app._saveSnapshot();
       board.removeModule(mod.id);
       this.app.renderer2d.selectedIds.clear();
       this.app.onSelectionChange(null);
@@ -134,15 +157,25 @@ class PCBUIManager {
       this.refreshNetList();
     });
 
+    const applyPinNet = (pidx, netName) => {
+      this.app._saveSnapshot();
+      if (netName) board.addNet(netName);
+      board.setModulePinNet(mod.id, pidx, netName || null);
+      this.app.renderer2d.draw();
+      this.refreshConnectionTable();
+      this.refreshNetList();
+    };
+
     document.querySelectorAll('.pin-net-sel').forEach(sel => {
       sel.addEventListener('change', e => {
         const pidx = parseInt(e.target.dataset.pinidx);
-        const netName = e.target.value || null;
-        if (netName) board.addNet(netName);
-        board.setModulePinNet(mod.id, pidx, netName);
-        this.app.renderer2d.draw();
-        this.refreshConnectionTable();
-        this.refreshNetList();
+        if (e.target.value === '__new__') {
+          const name = prompt('New net name:');
+          if (name && name.trim()) applyPinNet(pidx, name.trim());
+          else e.target.value = mod.pins[pidx].net || ''; // revert
+        } else {
+          applyPinNet(pidx, e.target.value);
+        }
       });
     });
   }
@@ -182,22 +215,25 @@ class PCBUIManager {
     `;
 
     document.getElementById('trace-net-sel')?.addEventListener('change', e => {
+      this.app._saveSnapshot();
       trace.net = e.target.value || null;
       this.app.renderer2d.draw();
       this.refreshConnectionTable();
+      this.refreshNetList();
     });
 
     document.getElementById('trace-del-btn')?.addEventListener('click', () => {
+      this.app._saveSnapshot();
       board.removeTrace(trace.id);
       this.app.onSelectionChange(null);
       this.app.renderer2d.draw();
       this.refreshConnectionTable();
+      this.refreshNetList();
     });
   }
 
   // ── Connection Table ───────────────────────────────────────
   refreshConnectionTable() {
-    if (this.activeTab !== 'conn') return;
     const { modules, rows } = this.app.board.connectionTable();
     const wrap = document.getElementById('conn-table-wrap');
 
@@ -232,9 +268,8 @@ class PCBUIManager {
 
   // ── Net list ───────────────────────────────────────────────
   refreshNetList() {
-    if (this.activeTab !== 'nets') return;
     const board = this.app.board;
-    const list = document.getElementById('net-list');
+    const list  = document.getElementById('net-list');
     if (!list) return;
 
     if (board.nets.size === 0) {

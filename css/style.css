@@ -79,6 +79,7 @@ body {
 .tb-btn:hover { background: var(--border); color: var(--accent2); }
 .tb-btn.active { background: var(--accent2); color: #000; border-color: var(--accent2); }
 .tb-btn.danger:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tb-btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 
 .tb-label {
   font-size: 11px;
